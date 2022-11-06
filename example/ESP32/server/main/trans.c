@@ -48,12 +48,15 @@ static void sem_give(void *sem)
 static int32_t sem_take(void *sem, uint32_t timeout)
 {
 	int ret = 0;
-	if (timeout >=  0xfffful) {
-		if (xSemaphoreTake(*(SemaphoreHandle_t *)sem, portMAX_DELAY) != pdTRUE) {
+	if (timeout >=  0xfffful) 
+    {
+		if (xSemaphoreTake(*(SemaphoreHandle_t *)sem, portMAX_DELAY) != pdTRUE) 
+        {
 			ret = -1;
 		}
 	} else {
-		if (xSemaphoreTake(*(SemaphoreHandle_t *)sem, timeout / portTICK_PERIOD_MS) != pdTRUE) {
+		if (xSemaphoreTake(*(SemaphoreHandle_t *)sem, timeout / portTICK_PERIOD_MS) != pdTRUE) 
+        {
 			ret = -2;
 		}
 	}
@@ -100,12 +103,15 @@ static int32_t mutex_lock(void *mutex, uint32_t timeout)
 {
     int ret = 0;
 
-    if (timeout >=  0xfffful) {
-        if (xSemaphoreTake(*(xSemaphoreHandle *)mutex, portMAX_DELAY) != pdTRUE) {
+    if (timeout >=  0xfffful) 
+    {
+        if (xSemaphoreTake(*(xSemaphoreHandle *)mutex, portMAX_DELAY) != pdTRUE) 
+        {
             ret = -1;
         }
     } else {
-        if (xSemaphoreTake(*(xSemaphoreHandle *)mutex, timeout / portTICK_PERIOD_MS) != pdTRUE)  {
+        if (xSemaphoreTake(*(xSemaphoreHandle *)mutex, timeout / portTICK_PERIOD_MS) != pdTRUE)  
+        {
             ret = -2;
         }
     }
@@ -300,9 +306,9 @@ static void ble_connected_handle(uint8_t conn_id)
 {
     bcp_parm_t bcp_parm = 
     {
-        .need_ack = 1,
+        .need_ack = 0,
         .mtu = 180,
-        .check_multiple = 3,
+        .check_multiple = 5,
         .mal = 8192,
     };
 
@@ -317,7 +323,6 @@ static void ble_connected_handle(uint8_t conn_id)
     printf("before start, free mem : %u\n", xPortGetFreeHeapSize());
     printf("=============================================================\n");
 
-    
     ble_bcp_map.bcp_id = bcp_create(&bcp_parm, &bcp_interface);
     if (ble_bcp_map.bcp_id >= 0) 
     {
@@ -376,17 +381,6 @@ static void bcp_rx(uint8_t conn_id, uint8_t *data, uint16_t len)
 
 static void bcp_test(void)
 {
-    // static uint8_t test_data[TEST_LEN];
-    // for (uint32_t i = 0; i < TEST_LEN; i++)
-    // {
-    //     test_data[i] = i%255;
-    // }
-
-    // if (ble_bcp_map.bcp_id >= 0) 
-    // {
-    //     bcp_send(ble_bcp_map.bcp_id, test_data, TEST_LEN);
-    // }
-
     printf("cur time is %u\n", get_sys_ms());
 
     printf("=============================================================\n");
