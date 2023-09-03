@@ -416,8 +416,7 @@ static void bcp_clean_handler(bcp_t *bcp, void *context) {
 
     remove_bcp_by_id(bcp->bcp_id);
     bcp_free(bcp);
-    
-    
+     
     if (bcp_release_parm != NULL && bcp_release_parm->result_notify != NULL) {
         bcp_release_parm->result_notify(0);
     }
@@ -443,9 +442,9 @@ int32_t bcp_release(int32_t bcp_id, void (*result_notify)(int32_t result)) {
 
     k_log(BCP_LOG_TRACE, "bcp release, bcp_id : %d\n", bcp_id);
     if (bcp_event_post(bcp_id, BCP_CLEAN_EVENT, bcp_release_parm, bcp_clean_handler, bcp_free) != true) {
+        k_log(BCP_LOG_ERROR, "bcp release, event enqueue failed\n");
         bcp_free(bcp_release_parm);
         bcp_release_parm = NULL;
-        k_log(BCP_LOG_ERROR, "bcp release, event enqueue failed\n");
         return -3;
     }
 
@@ -500,6 +499,7 @@ static int32_t bcp_init(bcp_t *bcp, const bcp_parm_t *bcp_parm, const bcp_interf
 
     bcp->expected_frame = NULL;
     bcp->sync_frame = NULL;
+    bcp->last_sync_id = 0;
     
     bcp->snd_next = 0;
     bcp->rcv_next = 0;
@@ -512,6 +512,24 @@ static int32_t bcp_init(bcp_t *bcp, const bcp_parm_t *bcp_parm, const bcp_interf
     bcp->crc16_cal = bcp_interface->crc16_cal;
 
     return 0;
+}
+
+static void bcp_deinit(bcp_t *bcp) {
+    if (bcp == NULL) {
+        return;
+    }
+
+    if (bcp->app_buf != NULL) {
+        bcp_free(bcp->app_buf);
+    }
+
+    if (bcp->need_ack == 1) {
+        if (bcp->ack_snd_buf != NULL) {
+            bcp_free(bcp->ack_snd_buf);
+        }
+    }
+
+    priority_queue_deinit(&bcp->msg_priority_queue);
 }
 
 static void sync_send_handler(bcp_t *bcp, void *context) {
@@ -547,14 +565,17 @@ int32_t bcp_create(const bcp_parm_t *bcp_parm, const bcp_interface_t *bcp_interf
 
     bcp->bcp_id = bcp_id;
     if (add_bcp_by_id(bcp_id, bcp) != 0) {
+        bcp_deinit(bcp);
         bcp_free(bcp);
         bcp = NULL;
         k_log(BCP_LOG_ERROR, "bcp create, bcp add failed\n");
         return -5;
     }
 
-    bool ret = bcp_event_post(bcp_id, SYNC_TX_EVENT, NULL, sync_send_handler, bcp_free);
+    bool ret = bcp_event_post(bcp_id, SYNC_TX_EVENT, NULL, sync_send_handler, NULL);
     if (ret != true) {
+        remove_bcp_by_id(bcp_id);
+        bcp_deinit(bcp);
         bcp_free(bcp);
         bcp = NULL;
         k_log(BCP_LOG_ERROR, "bcp create, post sync event failed\n");
@@ -689,7 +710,13 @@ static int32_t trans_frame_enqueue(bcp_t *bcp, uint8_t *data, uint16_t len, fram
 
     k_log(BCP_LOG_DEBUG, "trans_frame_enqueue, %d frame packed ok, rto is %d\n", frame->frame_data[3], frame->rto);
 
-    return bcp_event_post(bcp->bcp_id, APP_TX_EVENT, frame, data_send_handler, NULL) == true ? 0 : -3;  
+    if (bcp_event_post(bcp->bcp_id, APP_TX_EVENT, frame, data_send_handler, NULL) != true) {
+        bcp_free(frame);
+        frame = NULL;
+        return -3;
+    }
+
+    return 0;
 }
 
 static int32_t data_divide(bcp_t *bcp, uint8_t *data, uint16_t len) {
@@ -824,7 +851,10 @@ static void retrans_send(uint8_t bcp_id, uint8_t need_update_fsn) {
     retrans_parm->bcp_id = bcp_id;
     retrans_parm->need_update_fsn = need_update_fsn;
 
-    bcp_event_post(bcp_id, RETRANS_EVENT, retrans_parm, retrans_send_handler, bcp_free);  
+    if (bcp_event_post(bcp_id, RETRANS_EVENT, retrans_parm, retrans_send_handler, bcp_free) != true) {
+        bcp_free(retrans_parm);
+        retrans_parm = NULL;
+    }
 }
 
 
@@ -1078,7 +1108,12 @@ static void full_frame_process(bcp_t *bcp, void *context) {
 }
 
 static int32_t full_frame_recv(bcp_t *bcp, frame_t *frame) {
-    return bcp_event_post(bcp->bcp_id, APP_RX_EVENT, frame, full_frame_process, NULL) == true ? 0 : -1; 
+    if (bcp_event_post(bcp->bcp_id, APP_RX_EVENT, frame, full_frame_process, NULL) != true) {
+        bcp_free(frame);
+        return -1;
+    }
+
+    return 0; 
 }
 
 
@@ -1265,7 +1300,13 @@ static int32_t ack_or_nack_recv(bcp_t *bcp, uint8_t is_ack, uint8_t *data, uint1
     ack_ctx->fsn = data[3];
     ack_ctx->una = data[6];
 
-    return bcp_event_post(bcp->bcp_id, ACK_RX_EVENT, ack_ctx, ack_or_nack_recv_handler, bcp_free) == true ? 0 : -1; 
+    if (bcp_event_post(bcp->bcp_id, ACK_RX_EVENT, ack_ctx, ack_or_nack_recv_handler, bcp_free) != true) {
+        bcp_free(ack_ctx);
+        ack_ctx = NULL;
+        return -2;
+    }
+    
+    return 0; 
 }
 
 
@@ -1279,7 +1320,7 @@ typedef struct {
 
 
 static int32_t sync_id_gnerate(void) {
-    int ret = 0;
+    int ret;
     uint8_t *p = (uint8_t *)&ret;
     uint8_t len = sizeof(ret);
 
@@ -1436,7 +1477,7 @@ static void sync_frame_recv_handler(bcp_t *bcp, void *context) {
 
     sync_info_t *sync_info = (sync_info_t *)context;
 
-    k_log(BCP_LOG_INFO, "sync_frame_handler, bcp_id : %d, cmd : %d\n", bcp->bcp_id, sync_info->cmd);
+    k_log(BCP_LOG_INFO, "sync_frame_recv_handler, bcp_id : %d, cmd : %d\n", bcp->bcp_id, sync_info->cmd);
     
     if (sync_info->cmd == SYNC_REQ_CMD) {
         sync_frame_rcv_req_handle(bcp, sync_info->id);
@@ -1466,6 +1507,8 @@ static int32_t sync_frame_recv(bcp_t *bcp, uint8_t *data, uint16_t len) {
 
     bool ret = bcp_event_post(bcp->bcp_id, SYNC_RX_EVENT, sync_info, sync_frame_recv_handler, bcp_free);
     if (ret != true) {
+        bcp_free(sync_info);
+        sync_info = NULL;
         k_log(BCP_LOG_ERROR, "sync frame recv, post failed, bcp_id : %d, cmd : %d\n", bcp->bcp_id, sync_info->cmd);
     }
     k_log(BCP_LOG_DEBUG, "sync frame recv, post ret is %d, bcp_id : %d, cmd : %d\n", ret, bcp->bcp_id, sync_info->cmd);
