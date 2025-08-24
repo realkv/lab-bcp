@@ -1,84 +1,25 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
-#include "freertos/semphr.h"
-#include "freertos/queue.h"
+/*
+ * @Author: your name
+ * @Date: 2021-10-12 11:52:30
+ * @LastEditTime: 2025-08-25 00:05:44
+ * @LastEditors: auto
+ * @Description: In User Settings Edit
+ * @FilePath: \esp32-new\sources\coap_test\main\period_task.c
+ */
 
-#include "esp_timer.h"
+#include "common.h"
 #include "esp_log.h"
 
-/*********************************************************** test ***********************************************************/
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
-static const char* TAG = "periode timer";
-
-static void period_timer_init(esp_timer_handle_t *timer, esp_timer_cb_t cb, const char *timer_name)
-{
-    /* Create two timers:
-     * 1. a periodic timer which will run every 0.5s, and print a message
-     */
-
-    const esp_timer_create_args_t periodic_timer_args = {
-            .callback = cb,
-            /* name is optional, but may help identify the timer when debugging */
-            .name = timer_name
-    };
-
-    
-    ESP_ERROR_CHECK(esp_timer_create(&periodic_timer_args, timer));
-    /* The timer has been created but is not running yet */
-
-}
-
-
-static void timer_start(esp_timer_handle_t timer, uint32_t period_ms)
-{
-    /* Start the timers */
-    ESP_ERROR_CHECK(esp_timer_start_periodic(timer, period_ms*1000));
-    ESP_LOGI(TAG, "Started timers, time since boot: %lld us", esp_timer_get_time());
-}
-
-
-
-static void *queue_create(uint32_t num, uint32_t element_size)
-{
-    return (void *)xQueueCreate(num, element_size);
-}
-
-static bool dequeue(void *queue, void *data, uint32_t timeout)
-{
-    if (xQueueReceive((QueueHandle_t)queue, data, timeout) != pdPASS)
-        return false;
-
-    return true;
-}
-
-static bool enqueue_back(void *queue, void *data, uint32_t timeout)
-{
-    if (xQueueSendToBack((QueueHandle_t)queue, data, timeout) != pdPASS)
-        return false;
-
-    return true;
-}
-
-static bool enqueue_front(void *queue, void *data, uint32_t timeout)
-{
-    if (xQueueSendToFront((QueueHandle_t)queue, data, timeout) != pdPASS)
-        return false;
-
-    return true;
-}
-
-static bool queue_reset(void *queue)
-{
-    xQueueReset((QueueHandle_t)queue);
-
-    return true;
-}
+#include "gattc_demo.h"
 
 
 /*********************************************************** timer ***********************************************************/
 static esp_timer_handle_t periodic_timer;
 static void *period_timer_queue = NULL;
-static const char *periodic_timer_name = "periodic_timer2";
+static const char *periodic_timer_name = "periodic_timer12";
 
 static void periodic_timer_callback(void* arg)
 {
@@ -94,18 +35,27 @@ static void periodic_timer_init(void)
 }
 
 
+static const char* TAG = "PERIOD_TASK";
 
-static void (*period_exec)(void) = NULL;
 
-void period_exec_cb_register(void (*period_exec_cb)(void)) {
-    period_exec = period_exec_cb;
+
+static void (*period_task_run)(void) = NULL;
+
+
+void period_task_register(void (*func)(void))
+{
+    period_task_run = func;
 }
+
+
 
 static void period_task(void *arg)
 {
-
     periodic_timer_init();
     timer_start(periodic_timer, 1000);
+
+    static uint8_t ble_first_flag = 0;
+    static uint8_t first_flag = 0;
 
     while (1)
     {
@@ -114,16 +64,23 @@ static void period_task(void *arg)
         {
             if (cur_ticks%1 == 0)
             {
+                // 1s
+                //ESP_LOGI(TAG, "=== free heap is %d", xPortGetFreeHeapSize());
         
             }
 
             if (cur_ticks%5 == 0)
             {
                 // 5s
-                ESP_LOGI(TAG, "cur_ticks : %d", cur_ticks);
+                // ESP_LOGI(TAG, "cur_ticks : %d", cur_ticks);
+                // resources_update(cur_ticks%255);
 
-                if (period_exec != NULL) {
-                    period_exec();
+                // medium_test();
+
+                printf("cur_ticks : %d\r\n", cur_ticks);
+
+                if (period_task_run) {
+                    period_task_run();
                 }
 
             }
@@ -141,4 +98,5 @@ static void period_task(void *arg)
 void period_task_create(uint32_t stack_size, uint8_t priority)
 {
     xTaskCreate(period_task, "period_task", stack_size, NULL, priority, NULL);
+    
 }

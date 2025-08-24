@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -44,6 +43,6 @@ void app_main(void)
 
     period_task_create(1024*8, 1); 
 
-    trans_ble_init();
+    trans_task_init();
 }
 

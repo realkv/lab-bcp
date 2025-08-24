@@ -1,4 +1,3 @@
-
 #ifndef __TRANS_H__
 #define __TRANS_H__
 
@@ -6,7 +5,7 @@
 extern "C" {
 #endif
 
-void trans_ble_init(void);
+void trans_task_init(void);
 
 #ifdef __cplusplus
 }

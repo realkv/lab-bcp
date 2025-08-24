@@ -1,129 +1,120 @@
-# BCP ：A ARQ protocol for IoT&BLE communication
 
+# BCP: An ARQ Protocol for Peer-to-Peer Communication in IoT
 ![Platform](https://img.shields.io/badge/Platform-RTOS%2FAndroid%2FiOS-green) ![protocol](https://img.shields.io/badge/protocol-BLE-brightgreen)
 
-BCP is a reliable transmission protocol for BLE communication in IoT
 
-In many IoT projects, there is a need for BLE based communication. For upper layer data, the MTU of BLE is too small, and subcontracting is required. In addition, in order to improve the communication rate as much as possible, in practice, the BLE Notify and Write_with_no_response method is used for communication. In this way, there is no underlying acknowledgement packet, and packet loss may occur in some cases.
+BCP is a reliable transport protocol designed for peer-to-peer communication in IoT, supporting various underlying transports such as BLE, serial communication, and LAN UDP.
 
-BCP enables upper layer users to send data much larger than MTU at one time, without considering how to sub package and group packets. The internal packet loss detection and retransmission mechanism ensures the transmission reliability, and the transmission efficiency is higher than that of using Indicate and Write_with_response method.
+### Why is it needed?
+
+In IoT projects, especially those involving Bluetooth Low Energy (BLE) communication, several challenges often arise:
+*   **MTU Limitations:** BLE's MTU (Maximum Transmission Unit) is typically very small (e.g., 20-23 bytes), limiting the amount of data that can be transmitted in a single go.
+*   **Unreliable Communication:** BLE connections can be unstable, prone to packet loss or out-of-order delivery.
+*   **Bloated Upper-Layer Protocols:** Many custom or standard protocols (e.g., MQTT, CoAP) incur significant overhead in low-power, low-bandwidth environments, making them unsuitable for direct use.
+
+The BCP protocol is specifically designed to address these challenges:
+*   **Reliable Transmission:** Implements an ARQ (Automatic Repeat reQuest) mechanism to ensure data reliability, supporting packet retransmission and out-of-order handling.
+*   **Fragmentation and Reassembly:** Automatically fragments large data blocks to fit small BLE MTUs and reassembles them at the receiver, transparent to the upper layer.
+*   **Lightweight:** The protocol itself has minimal overhead, prioritizing resource-constrained embedded devices in its design.
+
+BCP's core positioning is: **A reliable transport protocol for peer-to-peer communication in IoT, applicable not only to BLE but also to serial communication, LAN UDP, and more.**
 
 ## Features
-
-- Configurable subcontracting size
-- NACK confirmation retransmission mechanism for fast data transmission ensures packet loss retransmission in a short time and provides reliable communication services as much as possible
-- The ACK confirmation retransmission mechanism for absolute reliable transmission provides efficient and absolute reliable communication services through fast retransmission and selective retransmission
-- Asynchronous serial design pattern to avoid external users from dealing with complex resource competition problems
-- Low redundancy data
-- Applicable to embedded RTOS, Android and iOS multi platforms
+- Configurable packet fragmentation and reassembly size
+- Configurable acknowledgment packet interval, balancing reliability and efficiency
+- Memory pool design, eliminating memory fragmentation concerns, friendly to embedded platforms
+- Asynchronous serial design pattern, preventing external users from dealing with complex resource contention issues
+- Low data redundancy (utilizes efficient packet encapsulation and minimal control information to maximize data transmission efficiency)
+- Applicable across multiple platforms: embedded RTOS, Android, and iOS
 
 ## Quick Start
 
-In order to avoid external users from dealing with resource competition in a complex multithreaded environment, BCP uses the asynchronous serial mode, so it is necessary to register some functions related to the external platform before using them.
+To prevent external users from dealing with complex resource contention issues in multi-threaded environments, BCP employs an asynchronous serial mode. Therefore, some external platform-specific functions need to be registered before use.
 
-### Register External Dependencies
+### Registering External Dependencies
 
-1. Implement and register semaphore
+BCP requires access to platform-specific functions. You need to implement and register a `bcp_interface_t` structure, which contains the **callback functions** required for platform adaptation.
 
-        // According to your systems, realize the create, give, take and free of semaphore
-        b_sem_t sem;
-        sem.sem_create = sem_new;
-        sem.sem_give = sem_give;
-        sem.sem_take = sem_take;
-        sem.sem_free = sem_free;
+```c
+// bcp_interface_t
+typedef struct {
+    // --- Thread Management ---
+    struct bcp_thread_t {
+        /**
+         * @brief Creates a new thread.
+         * @param thread Pointer to a pointer that will hold the new thread handle.
+         * @param thread_config Configuration for the new thread.
+         * @return 0 on success, -1 on failure.
+         */
+        int32_t (*thread_create)(void **thread, bcp_thread_config_t *thread_config);
 
-        sem_func_register(&sem);
+        /**
+         * @brief Destroys an existing thread.
+         * @param thread Pointer to a pointer holding the thread handle to destroy.
+         * @return 0 on success, -1 on failure.
+         */
+        int32_t (*thread_destory)(void **thread);
 
-2. Implement and register mutex
+        /**
+         * @brief Exits the current thread.
+         * @param thread Pointer to a pointer holding the current thread handle.
+         */
+        void (*thread_exit)(void **thread);
 
-        // According to your systems, realize the create, lock, unlock and free of mutex
-        b_mutex_t mutex;
-        mutex.mutex_create = mutex_new;
-        mutex.mutex_lock = mutex_lock;
-        mutex.mutex_unlock = mutex_unlock;
-        mutex.mutex_free = mutex_free;
+    } bcp_thread;
 
-        mutex_func_register(&mutex);
+    // ... 
+} bcp_interface_t;
 
-3. Register memory management functions
+// Initialize the platform adaptation layer, passing the implemented bcp_interface_t
+// void bcp_adapter_port_init(const bcp_adapter_port_t *bcp_adapter_port);
+```
 
-        k_allocator(malloc, free);
+### Getting Started
 
-    If it is a FreeRTOS system, it is as follows
+1.  Create a BCP Instance
 
-        k_allocator(pvPortMalloc, vPortFree);
+        // Create a bcp_block_t object. On successful creation, a pointer to the bcp_block_t object will be returned.
+        // Externally, a one-to-one mapping can be established between this object and the actual communication entity (e.g., a GATT Service).
+        bcp_block_t *bcp_block = bcp_create(bcp_parm, bcp_interface, user_data);
 
-4. Implement and register to obtain system millisecond level time function
+    For BLE, the `bcp_block_t` object should be created after a successful connection.
 
-        op_get_ms_register(get_sys_ms);
+2.  Input a Low-Level Data Packet
 
-### How to use
+        // Call this when low-level data (e.g., BLE data) is received.
+        bcp_input(bcp_block, data, len);
 
-1. Create bcp
-   
-        // Create a bcp object. If the creation is successful, it will return an ID no less than 0.
-        // External users may need to establish a one-to-one correspondence between this ID and the actual communication entity (such as GATT Service)
-        int32_t bcp_id = bcp_create(bcp_parm, bcp_interface);
+3.  Open the Transmission Channel
 
-    For BLE, the time to create the bcp object is after the successful connect.
+        // Listen for the open result via callback.
+        bcp_open(bcp_block, opened_cb, 2000);
 
-2. Loop call bcp_task_run in a thread/task
-   
-        // It is blocked during the timeout period.
-        bcp_task_run(bcp_id, timeout_ms);
+4.  Call `bcp_send` to Transmit Upper-Layer Data
 
-3. Cyclically call bcp_check
-   
-        // The call cycle is generally recommended to be 100 ms
-        bcp_check(bcp_id);
-
-4. Input a lower layer data packet
-   
-        // Need to call when a lower layer data packet (such as BLE packet)is received
-        bcp_input(bcp_id, data, len);
-
-5. Call bcp_send to send upper layer data
-
-        // If the return value is equal to 0, the execution is successful and the data will be sent asynchronously
-        // If the return value is less than 0, it indicates that an error has occurred and needs to be called again or other error handling
-        bcp_send(bcp_id, data, len);
+        // If the return value is 0, it indicates successful execution, and the data will be sent asynchronously.
+        // If the return value is less than 0, an error occurred, requiring a retry or other error handling.
+        bcp_send(bcp_block, data, len);
 
 ### Protocol Configuration
 
-#### Protocol Mode
+BCP's core configuration parameters are contained within the `bcp_parm_t` structure. Key parameters and their descriptions are as follows:
 
-Configuration through bcp_parm_t::need_ack field, 0: NACK, 1: ACK
+**mfs_scale (Max Frame Size Scale):**
+- Type: `uint8_t`
+- Description: This is a scaling factor for the internal frame size used by BCP. BCP calculates the actual maximum transmission bytes per single frame based on this value and `mtu`.
+- Recommendation: Recommended values are 3 to 5. A larger value means more data per frame, leading to relatively lower protocol overhead, but also a larger amount of data to retransmit if needed.
 
-The protocol includes NACK mode and ACK mode. The differences between the two modes are as follows
+**mtu (Maximum Transmission Unit):**
+- Type: `uint16_t`
+- Description: Indicates the actual maximum transmission unit (MTU) size available on the underlying communication medium.
+- Special Note (BLE): For BLE, you need to consider protocol overhead (e.g., ATT header, L2CAP header, etc.) and pass the *actual usable* MTU. For example, if the BLE MTU is 23 bytes, typically only 15-19 bytes are *actually available for upper-layer data* (depending on attributes and connection parameters). Ensure accurate setting based on your BLE stack and connection configuration.
 
-NACK mode : normally receiving data packets will not give any response to the other party. Only when a frame loss is detected, the sender will send a NACK frame to the other party. After receiving the NACK frame, the sender will retransmit all subsequent frames from the lost frame.
+**mal (Max Amount of Data):**
+- Type: `uint32_t`
+- Description: Indicates the maximum amount of user data (in bytes) that BCP can handle in a single `bcp_send` call. This value affects BCP's internal buffer allocation and processing logic.
+- Recommendation: Typically set to the maximum data volume expected for a single interaction in your application scenario.
 
-ACK mode : Each time the receiver receives a frame, it will return an ACK frame to the receiver. These ACK frames will be based on the bcp_ The time of check is sent separately or aggregated in one MTU packet. Frames that do not receive ACK within a certain time (usually 1500ms, which can be adjusted by MAX_INTERVAL_RTO) will be retransmitted.
+## Examples
 
-The design differences of the two modes correspond to two application scenarios :
-The NACK mode is applicable to scenarios where large amounts of data are transmitted quickly, such as nine axis raw data acquisition based on BLE, but general protocol communication is also applicable, because packet loss is not easy to occur.
-ACK mode is applicable to absolutely reliable scenarios, such as some protocols that require absolutely reliable transmission.
-
-#### Unit size of frame loss detection
-
-BCP's packet loss detection and retransmission are based on frames. The frame size is 1 to N MTUs. The frame size affects the transmission efficiency to a certain extent. If the frame size is set to 1 MTU, ACK mode has no advantage over GATT's Indicator and Write_with_response methods.
-
-The frame size is passed through bcp_parm_t::check_ The multiple field is generally set to 3~5, that is, a frame is 3 to 5 MTU packet sizes.
-
-#### Size of MTU
-
-Set via bcp_parm_t::mtu field.
-
-The MTU size is the actual available size. For example, for the BLE4.0 system, the MTU of the system is 23, and the actual available size is 20, then the MTU should be set to 20.
-
-#### Maximum amount of data sent or received in a single time
-
-Set via bcp_parm_t::mal field.
-
-BCP will request a block of memory to temporarily store the received frame data, and there is a call to bcp_ The release exists before the BCP object is destroyed. The size of the data sent in a single time cannot exceed the size of the memory block, otherwise an error will occur in sending or receiving.
-
-For memory sensitive embedded devices, the size of the memory block can be adjusted according to the actual situation.
-
-## Example
-
-See the example directory for details. At present, there are only examples under ESP32.
+See the `example` directory. Currently, only an ESP32 example is available.

@@ -1,10 +1,12 @@
 ﻿set(src_dirs 
     "."
+    "../../common"
     "../../../../bcp-sdk/src"
     )
 
 set(include_dirs 
     "."
+    "../../common"
     "../../../../bcp-sdk/include"
     )
 

@@ -1,10 +1,13 @@
-﻿
+﻿/*
+ * @LastEditors: auto
+ */
+
 #ifndef __GATTC_DEMO_H__
 #define __GATTC_DEMO_H__
 
 #include <stdint.h>
 #include <stdbool.h>
-
+#include "common.h"
 
 /* Attributes State Machine */
 enum

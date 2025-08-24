@@ -1,4 +1,3 @@
-
 #ifndef __PERIOD_TASK_H__
 #define __PERIOD_TASK_H__
 
@@ -8,7 +7,7 @@ extern "C" {
 
 void period_task_create(uint32_t stack_size, uint8_t priority);
 
-void period_exec_cb_register(void (*period_exec_cb)(void));
+void period_task_register(void (*func)(void));
 
 
 #ifdef __cplusplus

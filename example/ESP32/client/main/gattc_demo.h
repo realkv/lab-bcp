@@ -1,9 +1,9 @@
-﻿
-#ifndef __GATTC_DEMO_H__
+﻿#ifndef __GATTC_DEMO_H__
 #define __GATTC_DEMO_H__
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "common.h"
 
 typedef struct
 {

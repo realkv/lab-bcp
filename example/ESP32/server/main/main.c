@@ -1,3 +1,6 @@
+/*
+ * @LastEditors: auto
+ */
 
 #include <stdio.h>
 #include <string.h>
@@ -43,7 +46,7 @@ void app_main(void)
 {
     system_init();
 
-    trans_ble_init();
+    trans_task_init();
 
     period_task_create(1024*8, 1); 
 }

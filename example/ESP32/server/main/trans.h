@@ -1,7 +1,7 @@
 /*
  * @Author: your name
  * @Date: 2021-09-10 17:50:18
- * @LastEditTime: 2022-05-25 14:59:04
+ * @LastEditTime: 2025-08-25 00:04:50
  * @LastEditors: auto
  * @Description: In User Settings Edit
  * @FilePath: \esp32-new\sources\coap_test\main\trans.h
@@ -14,9 +14,7 @@
 extern "C" {
 #endif
 
-void trans_ble_init(void);
-
-void trans_ble_start(void);
+void trans_task_init(void);
 
 #ifdef __cplusplus
 }
