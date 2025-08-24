@@ -1507,9 +1507,10 @@ static int32_t sync_frame_recv(bcp_t *bcp, uint8_t *data, uint16_t len) {
 
     bool ret = bcp_event_post(bcp->bcp_id, SYNC_RX_EVENT, sync_info, sync_frame_recv_handler, bcp_free);
     if (ret != true) {
+        k_log(BCP_LOG_ERROR, "sync frame recv, post failed, bcp_id : %d, cmd : %d\n", bcp->bcp_id, sync_info->cmd);
         bcp_free(sync_info);
         sync_info = NULL;
-        k_log(BCP_LOG_ERROR, "sync frame recv, post failed, bcp_id : %d, cmd : %d\n", bcp->bcp_id, sync_info->cmd);
+        return ret == true ? 0 : -3;
     }
     k_log(BCP_LOG_DEBUG, "sync frame recv, post ret is %d, bcp_id : %d, cmd : %d\n", ret, bcp->bcp_id, sync_info->cmd);
 
@@ -1707,8 +1708,8 @@ static void bcp_snd_buf_check(bcp_t *bcp, uint32_t cur_ms) {
             if (frame->frame_status == FRAME_WAITING_ACK) {
                 if (time_diff(cur_ms, frame->timeout_ms) >= 0) {  
                     queue_del(&frame->node);
-                    bcp_free(frame); 
                     k_log(BCP_LOG_TRACE, "nack mode, delete frame : %d \n", frame->frame_data[3]);  
+                    bcp_free(frame); 
                 }
             }  
         }
